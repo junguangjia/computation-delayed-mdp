@@ -1,0 +1,72 @@
+% Fonts and typography
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext}
+\usepackage{microtype}
+\usepackage{bm}
+\usepackage{amsthm} % load before newtxmath
+\usepackage{newtxmath}
+
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{thmtools}
+\usepackage{mathtools}
+
+% Tables and graphics
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+
+% Page geometry
+\usepackage[
+  paper  = letterpaper,
+  left   = 0.82in,
+  right  = 0.82in,
+  top    = 0.80in,
+  bottom = 0.82in
+]{geometry}
+
+% Paragraph and display spacing
+\usepackage[parfill]{parskip}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3.2pt plus 1pt minus 0.5pt}
+\AtBeginDocument{%
+  \setlength{\abovedisplayskip}{5pt plus 1.5pt minus 1.5pt}%
+  \setlength{\belowdisplayskip}{5pt plus 1.5pt minus 1.5pt}%
+  \setlength{\abovedisplayshortskip}{2.5pt plus 1pt}%
+  \setlength{\belowdisplayshortskip}{3.5pt plus 1pt}%
+}
+
+% Compact section headings using native LaTeX kernel
+\makeatletter
+\renewcommand\section{\@startsection{section}{1}{\z@}%
+  {-1.6ex \@plus -0.35ex \@minus -0.2ex}%
+  {0.6ex \@plus 0.15ex}%
+  {\normalfont\large\bfseries}}
+\renewcommand\subsection{\@startsection{subsection}{2}{\z@}%
+  {-1.2ex \@plus -0.25ex \@minus -0.15ex}%
+  {0.4ex \@plus 0.1ex}%
+  {\normalfont\normalsize\bfseries}}
+\makeatother
+
+% Theorem environments
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+% References and links
+\usepackage[round]{natbib}
+\usepackage[hidelinks]{hyperref}
+
+% Math macros
+\newcommand{\E}{\operatorname{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Normal}{\mathrm{N}}
+\newcommand{\IW}{\operatorname{IW}}
+\newcommand{\VoC}{\operatorname{VoC}}
+\newcommand{\IG}{\operatorname{IG}}
+\newcommand{\diag}{\operatorname{diag}}

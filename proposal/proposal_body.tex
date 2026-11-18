@@ -1,0 +1,199 @@
+\begin{center}
+  {\Large\bfseries Learning When Computation Is Worth Its Delay:\\[2pt]
+  Joint Discrepancy Modeling for Control Under Information Age and Latency\par}
+  \vspace{4pt}
+  {\normalsize Junguang Jia (\texttt{jj3445}) \quad$\cdot$\quad November 2026\\[2pt]
+  \small\emph{Research Proposal --- Prepared for Discussion with Prof.\ Vineet Goyal (IEOR, Columbia University)}\par}
+\end{center}
+
+\vspace{-3pt}
+\begin{quote}
+\small\setlength{\parskip}{0pt}
+\textbf{Abstract.}
+Online controllers in evolving Markov decision processes (MDPs) choose between acting on a fast low-fidelity surrogate ($L$) and running slower high-fidelity simulation batches ($H$) whose runtime introduces information age or actuation delay. Accurate \emph{marginal} cost predictions are insufficient for decision-making in general \citep{wen2021predictions}; we identify which cross-age and cross-action discrepancy covariance entries determine whether high-fidelity verification pays net of delay, and test whether they matter in urban traffic signal control. Statistically, we propose a masked, heteroscedastic hierarchical Gaussian double-difference model fitted via blocked Gibbs sampling and full-covariance structured variational inference (SVI), separating structural discrepancy covariance from common-random-number simulation noise while handling exact structural zeros induced by signal-legality rules. Theoretically, in a two-alternative setting, we characterize exact over- and under-computation conditions for marginal-matched factorized beliefs, state the tie-safe excess-risk decomposition, and target perturbation and queue-memory decorrelation bounds. Empirically, motivated by pilot SUMO diagnostics showing $+1.53\%$ closed-loop gain from precomputed $60\,\mathrm{s}$ verification over \texttt{greedy5}, we design a pre-registered information-age gate and 72-date benchmark on 2023 RESCO v2.0 Salt Lake City workloads.
+\end{quote}
+
+\section{Introduction and Related Literature}
+
+Real-time controllers in traffic signal control, robotics, and dynamic dispatch compute while the physical system evolves. A fast queueing surrogate ($L$) scores candidate actions in milliseconds but incurs approximation bias, whereas high-fidelity microsimulation ($H$) improves evaluation accuracy at the cost of wall-clock deliberation. Under \emph{concurrent precomputation}, running a heavier simulation batch requires starting earlier from a staler state $S_{t_0 - L}$ of information age $L$; under \emph{post-epoch deliberation}, waiting $\tau$ while a fallback policy $\pi_0$ operates incurs staleness and may forfeit candidate phases to legality constraints. We ask: \emph{when does multi-fidelity simulation verification pay net of information age or actuation delay, and which entries of the joint discrepancy covariance govern that decision?}
+
+\textbf{Related literature.}
+Metareasoning treats deliberation as costly \citep{russell1991principles,hansen2001monitoring}; thinking lets the environment drift \citep{lin2015metareasoning}, as in real-time and execution-delayed MDPs \citep{ramstedt2019realtime,derman2021delayed} and delay-compensated MPC \citep{findeisen2004delay}, and computation budgets can be learned via RL \citep{magnino2026learning,muppidi2026time}. Those works use a single simulator fidelity with learned or myopic Value-of-Computation ($\VoC$) surrogates. Conversely, Bayesian value of information for simulations \citep{hay2012selecting}, multi-level simulator discrepancy models \citep{kennedy2000predicting,kennedy2001bayesian}, multi-fidelity Knowledge Gradient (\texttt{misoKG}; \citealp{poloczek2017miso}), and correlated KG with common random numbers \citep{frazier2009knowledge,xie2016pairwise} assume a static target objective during sampling, while economic sampling models price response delay on fixed arms \citep{chick2012sequential,chick2017delayed}. Whereas \citet{wen2021predictions} establish generally that joint predictions matter beyond marginals, our focus is the multi-fidelity regime where simulation evidence collected on an earlier state informs action costs at a \emph{later} execution state, bridged by queueing metamodels \citep{osorio2013simulation} and online traffic microsimulation \citep{goodall2013traffic}.
+
+\section{Problem Formulation: Information Age and Actuation Latency}
+
+Consider a finite-horizon MDP $M = (\mathcal{S}, \mathcal{A}, P, c, T)$ with control epochs on a grid (e.g., $5\,\mathrm{s}$ intervals) and physical evaluation horizon $T$ ($T \ge 60\,\mathrm{s}$). We formalize two timing regimes under a common reactive baseline $\pi_0$:
+\[
+\text{\textbf{(Precomputed / Information Age $L$):}}\quad
+\underbrace{S_{t_0 - L}}_{\text{observe } x,\, \text{launch } H}
+\xrightarrow[\text{prev.\ action runs}]{\text{compute budget } \le L}
+\underbrace{S_{t_0}}_{\text{apply legal } a}
+\xrightarrow{\text{shared continuation}}
+[t_0, t_0 + T),
+\]
+where computation for epoch $t_0$ runs concurrently over $[t_0 - L, t_0)$ from causal features $x = \phi(S_{t_0 - L})$, and larger simulation budgets or multi-intersection sharing require larger lead age $L > 0$. By contrast, under \emph{off-grid post-epoch delay} $\tau > 0$ ($\pi_0$ acts at $t_0$ and $a$ is requested at $t_0 + \tau$), phase switches by $\pi_0$ at $t_0$ can deterministically forfeit $a$ under minimum-green rules; moreover, because $L$ is nearly free, re-evaluating $L$ on fresh state $S_{t_0}$ or $S_{t_0 + \tau}$ (\texttt{refresh-L}) weakly dominates acting on stale $L$ alone and serves as either a substitute or complement to $H$-verification.
+
+\textbf{Multi-fidelity costs, structural zeros, and discrepancy.}
+Indexing age/delay by $\ell \ge 0$, let $\pi_{a,\ell}$ denote the candidate policy evaluated over horizon $T$ with shared continuation (\texttt{greedy5}) and matched exogenous demand seed $\xi_r$. Relative to baseline $\pi_0$ ($g^F_i(\pi_0)=0$), define
+\begin{equation}\label{eq:discrepancy-def}
+g^F_i(a,\ell) \coloneqq \E_\xi\!\left[C^F(\pi_{a,\ell}; s_i, \xi) - C^F(\pi_0; s_i, \xi) \,\middle|\, s_i\right], \quad F \in \{L, H\},
+\qquad
+\delta_i(a,\ell) \coloneqq g^H_i(a,\ell) - g^L_i(a,\ell).
+\end{equation}
+Crucially, whenever signal timers and $\pi_0$'s deterministic rule force $\pi_{a,\ell} \equiv \pi_0$, both $C^H - C^H_0$ and $C^L - C^L_0$ vanish pathwise, yielding \emph{structural zeros} $\delta_i(a,\ell) \equiv 0$ known ex-ante at decision time.
+
+\section{Masked Heteroscedastic Model and Value-of-Computation Rule}
+
+\subsection{Paired Double-Difference Model with Structural Masking}
+
+Across $n$ saved states ($i=1,\dots,n$), $R_i \ge 2$ conditionally independent paired scenario replicates ($r=1,\dots,R_i$), and a grid of $K$ candidate--age pairs $j = (a_j, \ell_j) \in \{1,\dots,K\}$, we observe double-differences
+\begin{equation}\label{eq:double-diff}
+y_{irj} = \big(C^H_{irj} - C^H_{ir0}\big) - \big(C^L_{irj} - C^L_{ir0}\big).
+\end{equation}
+Let $\mathcal{M}_i \subseteq \{1,\dots,K\}$ denote the ex-ante computable mask of \emph{active} coordinates where $\pi_{a_j,\ell_j} \not\equiv \pi_0$ (setting $\delta_{ij} = y_{irj} = 0$ on $\mathcal{M}_i^c$), and let $P_i \in \{0,1\}^{|\mathcal{M}_i| \times K}$ extract $\mathcal{M}_i$. To avoid both the $K(K+1)/2$ parameter blow-up of unstructured covariances and the asymptotic collapse of homoscedastic thresholds as $n \to \infty$, we model state-dependent marginal scales $\Sigma(x_i) = D(x_i) R D(x_i)$ with $D(x_i) = \diag(\exp(Z_i \gamma))$ and structured correlation $R = R_{\mathcal{A}} \otimes R_{\mathcal{L}}$ (using an Ornstein--Uhlenbeck / VAR temporal kernel $[R_{\mathcal{L}}]_{uv} = \exp(-|\ell_u - \ell_v|/\vartheta)$ rather than linear delay interpolation, which overstates mid-grid temporal correlation):
+\begin{equation}\label{eq:hier-model}
+\boldsymbol\delta_i \mid \beta, \gamma, R \stackrel{\mathrm{ind}}{\sim} \Normal\!\big(X_i\beta,\, \Sigma(x_i)\big),
+\qquad
+\mathbf{y}_{ir,\mathcal{M}_i} \mid \boldsymbol\delta_i, \Omega \stackrel{\mathrm{ind}}{\sim} \Normal\!\big(P_i \boldsymbol\delta_i,\, P_i \Omega P_i^{\mathsf T}\big).
+\end{equation}
+Replication $R_i \ge 2$ identifies paired common-random-number noise $\Omega$ from within-state differences while cross-state variation identifies $\Sigma(x_i)$. Because standard $\IW(\nu, cI)$ priors shrink correlations toward zero (biasing toward factorized beliefs), we place separated priors on log-scales $\gamma$, regression weights $\beta \sim \Normal(m_0, V_0)$, and correlation parameters $(R_{\mathcal{A}}, \vartheta)$.
+
+\subsection{Inference and Online Value-of-Computation ($\VoC$) Rule}
+
+We pair blocked MCMC / Gibbs updates with \emph{full-covariance structured variational inference} (SVI), retaining a dense $|\mathcal{M}_i| \times |\mathcal{M}_i|$ covariance in $q(\boldsymbol\delta_{i,\mathcal{M}_i})$ so coordinate-wise mean-field factorization does not sever cross-action or cross-age dependence. At test state $x_\star$, given predictive belief $P$ over $\mathbf{g}^H_\star = \mathbf{g}^L_\star + \boldsymbol\delta_\star$ and query observation $\bar{\mathbf{y}}_{\star,Q}$ (incorporating \texttt{refresh-L} updates when fresh $L$ is observed at actuation), let $V_{\mathrm{now}}(x_\star) = \min_{a \in \mathcal{A}_0} \E_P[g^H_\star(a,0)]$, $V_{\mathrm{stale}}(x_\star) = \min_{a \in \mathcal{A}_0} \E_P[g^H_\star(a,\ell)]$, and $V_{\mathrm{ver}}(x_\star; P) = \E_P[\min_{a \in \mathcal{A}_0} \E_P[g^H_\star(a,\ell) \mid \bar{\mathbf{y}}_{\star,Q}]]$. Net Value of Computation is
+\begin{equation}\label{eq:voc-decomp}
+\VoC(x_\star; P) \coloneqq V_{\mathrm{now}}(x_\star) - V_{\mathrm{ver}}(x_\star; P)
+= \underbrace{\big(V_{\mathrm{stale}}(x_\star) - V_{\mathrm{ver}}(x_\star; P)\big)}_{\text{Information Gain } \IG(x_\star; P)\,\ge\,0}
+\;-\;
+\underbrace{\big(V_{\mathrm{stale}}(x_\star) - V_{\mathrm{now}}(x_\star)\big)}_{\text{Age / Staleness Penalty } \Delta_{\mathrm{delay}}(x_\star)}.
+\end{equation}
+When $|\mathcal{A}_0| \ge 3$ (e.g., $\{a_1, a_2, \pi_0\}$), $\IG(x_\star; P)$ is evaluated via Monte Carlo or Clark's approximation; when $\Delta_{\mathrm{delay}}(x_\star) \le 0$ and $\IG(x_\star; P) > 0$, verification is unconditionally optimal.
+
+\section{Theoretical Analysis: Joint vs.\ Marginal-Matched Beliefs}
+
+\subsection{Two-Alternative Threshold and Exact Covariance Conditions}
+
+Fix state $x$, a \emph{two-alternative} active choice set $\mathcal{A}_0 = \{a_1, a_2\}$ ($|\mathcal{A}_0|=2$), age/delay $\ell > 0$, and batch size $B$ on query set $Q$ over $\boldsymbol\delta = (\delta_{1,0}, \delta_{2,0}, \delta_{1,\ell}, \delta_{2,\ell})^{\mathsf T}$. Compare true joint belief $P_{\mathrm{joint}}: \boldsymbol\delta \sim \Normal(\boldsymbol\mu, \Sigma)$ against the \emph{marginal-matched factorized belief} $P_{\mathrm{fact}}: \boldsymbol\delta \sim \Normal(\boldsymbol\mu, \diag(\Sigma))$, while retaining the shared $-\varepsilon_{r0}$ baseline noise covariance in $R_B(P_{\mathrm{fact}})$ where applicable. Both beliefs share identical $a^\star_0$, $V_{\mathrm{now}}$, $\Delta_{\mathrm{delay}}$, and prior delayed contrast $m_\ell \coloneqq \mu^H_{1,\ell} - \mu^H_{2,\ell}$. With $\mathbf{c}_\ell = (0,0,1,-1)^{\mathsf T}$, gain vector $\mathbf{w}(P) = (C_{Q,Q}(P) + R_B(P))^{-1} C_{Q,\delta}(P)\mathbf{c}_\ell$, and posterior-mean contrast variance $\sigma_{\mathrm{post}}^2(P) \coloneqq \mathbf{c}_\ell^{\mathsf T} C_{\delta,Q}(P)\mathbf{w}(P)$, $|\mathcal{A}_0|=2$ admits the exact closed form \citep{frazier2009knowledge}
+\begin{equation}\label{eq:closed-voc}
+\VoC(P) = \sigma_{\mathrm{post}}(P)\,\psi\!\left(\frac{|m_\ell|}{\sigma_{\mathrm{post}}(P)}\right) - \Delta_{\mathrm{delay}},
+\qquad
+\psi(z) \coloneqq \varphi(z) - z\big(1 - \Phi(z)\big),
+\qquad
+\frac{d}{d\sigma}\!\left[\sigma\psi\!\left(\frac{|m_\ell|}{\sigma}\right)\right] = \varphi\!\left(\frac{|m_\ell|}{\sigma}\right) > 0.
+\end{equation}
+
+\begin{lemma}[Cross-Age and Cross-Action Threshold Shifts]\label{lem:regimes}
+For $|\mathcal{A}_0|=2$ with matched pre-query marginals:
+\begin{enumerate}\setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}
+\item \textbf{Cross-age transfer:} On initial-age queries $Q \subseteq \{(1,0),(2,0)\}$, independence gives $\sigma_{\mathrm{post}}(P_{\mathrm{fact}}) = 0$, incurring stopping regret $(\IG(P_{\mathrm{joint}}) - \Delta_{\mathrm{delay}})_+$. Under \emph{separable} temporal decay $\Sigma_{0,\ell} = \rho(\ell)\Sigma_{0,0}$ with $\Sigma_{\ell,\ell} = \Sigma_{0,0}$ and $|\rho(\ell)| < 1$, a delay-agnostic plug-in $P_{\mathrm{plug}}$ ($\rho \equiv 1$) satisfies $\sigma_{\mathrm{post}}(P_{\mathrm{joint}}) = |\rho(\ell)|\,\sigma_{\mathrm{post}}(P_{\mathrm{plug}})$ and over-computes whenever $\IG(P_{\mathrm{joint}}) < \Delta_{\mathrm{delay}} < \IG(P_{\mathrm{plug}})$ (non-separable covariances admit reverse examples).
+\item \textbf{Cross-action correlation:} On direct delayed queries $Q = \{(1,\ell),(2,\ell)\}$, as $R_B \to 0$ ($B \to \infty$), $P_{\mathrm{fact}}$ overstates $\sigma_{\mathrm{post}}$ (over-computes) iff $\Sigma_{(1,\ell),(2,\ell)} > 0$ \citep{xie2016pairwise}, whereas positively correlated paired noise can reverse the ordering at small $B$. For a single-action query $Q = \{(1,\ell)\}$ with noise variance $r_1$, $\sigma_{\mathrm{post}}(P_{\mathrm{joint}}) = |\Sigma_{11} - \Sigma_{12}|/\sqrt{\Sigma_{11}+r_1}$, so $P_{\mathrm{fact}}$ \emph{over-computes} iff $0 < \Sigma_{12} < 2\Sigma_{11}$ and \emph{under-computes} when $\Sigma_{12} < 0$ or $\Sigma_{12} > 2\Sigma_{11}$.
+\end{enumerate}
+\end{lemma}
+
+\subsection{Excess-Risk Identity and Target Structural Bounds}
+
+Under the tie-safe rule ``select $a_1$ iff $\widehat{\Delta}_\ell(\bar{\mathbf{y}}_B; P) < 0$'' and $d(P) = \mathbf{1}\{\VoC(P) > 0\}$, any mean-matched belief $\widehat{P}$ satisfies the exact plug-in excess-risk identity under $P_{\mathrm{joint}}$:
+\begin{align}\label{eq:regret-decomp}
+\mathcal{R}(\widehat{P}; P_{\mathrm{joint}})
+&= \big|d(\widehat{P}) - d(P_{\mathrm{joint}})\big|\cdot\big|\VoC(P_{\mathrm{joint}})\big| \nonumber\\[-2pt]
+&\quad + d(\widehat{P})\,\E_{P_{\mathrm{joint}}}\!\Big[\big|\widehat{\Delta}_\ell(\bar{\mathbf{y}}_B; P_{\mathrm{joint}})\big|\,\mathbf{1}\!\big\{\mathbf{1}\{\widehat{\Delta}_\ell(\bar{\mathbf{y}}_B; \widehat{P}) < 0\} \ne \mathbf{1}\{\widehat{\Delta}_\ell(\bar{\mathbf{y}}_B; P_{\mathrm{joint}}) < 0\}\big\}\Big].
+\end{align}
+Building on \eqref{eq:regret-decomp}, our theoretical work targets two non-trivial analytical results:
+(i) \textbf{Filter-weight perturbation bounds} upper-bounding post-verification selection regret (the second term in \eqref{eq:regret-decomp}) explicitly in terms of $\|\mathbf{w}(\widehat{P}) - \mathbf{w}(P_{\mathrm{joint}})\|$ and SVI covariance error $\|\widehat{\Sigma}(x) - \Sigma(x)\|_{\mathrm{op}}$; and
+(ii) \textbf{Queue-memory and decorrelating stopping bounds}, coupling $\pi_0$ trajectories with queue-clearing time $\tau_{\mathrm{couple}}$ to establish $\IG(\ell) \le \frac{2M}{\sqrt{2\pi}}\Pr(\tau_{\mathrm{couple}} > \ell)$ for bounded payoffs $M$, and proving monotonicity of the continuous-time stopping boundary under OU target decorrelation $e^{-t/\vartheta}$ (recovering \citealp{chick2012sequential} as $\vartheta \to \infty$).
+
+\section{Empirical Benchmark, Pilot Diagnostics, and Pre-Registered Gate}
+
+\textbf{Data provenance and pilot diagnostics.}
+We use the RESCO benchmark framework \citep{ault2021reinforcement} with the \texttt{saltlake2\_400sX200w} corridor added in RESCO v2.0 \citep{resco2025v2} (sites \texttt{7241}/\texttt{7242}, 730 daily CSVs of 2023 five-minute Utah DOT ATSPM counts). Screening 07:00--08:00 retains \textbf{217 train, 29 validation, 11 eligible dates in the 2023-10-01--10-15 development buffer, and 72 held-out test dates}. Initial native pilot diagnostics on \texttt{2023-10-04} and \texttt{10-05} ($\times \{+300, +900\,\mathrm{s}\}$, 435 states, 12 paired closed-loop units) established three design facts: (a) evaluation horizon $T \ge 60\,\mathrm{s}$ is essential ($30\,\mathrm{s}$ rollouts correlate at $0.33$--$0.38$ with $60\,\mathrm{s}$ truth and lose $-0.34\%$, whereas precomputed $60\,\mathrm{s}$ verification with $B=4$ beats \texttt{greedy5} by $+1.53\%$ TTS, winning $12/12$ dev units); (b) off-grid post-epoch actuation forfeits candidates to MaxPressure in $57.5\%$ of states ($-3.39\%$ TTS) and produces $36.8\%$--$89\%$ structural zeros, motivating our mask $\mathcal{M}_i$; and (c) single-corridor $B=4$ runtime is $\approx 1.0\,\mathrm{s}$ inside a $5\,\mathrm{s}$ interval.
+
+\begin{center}
+\vspace{-2pt}
+{\footnotesize\renewcommand{\arraystretch}{1.07}
+\begin{tabular}{@{}p{0.22\linewidth}p{0.74\linewidth}@{}}
+\toprule
+\textbf{Validation Stage} & \textbf{Protocol, Baselines, and Pre-Registered Criteria}\\
+\midrule
+1.\ Zero-Truth \& Recovery & Same-simulator $L=H$ audit ($\E[y_{irj}]=0$) plus synthetic masked heteroscedastic recovery: verify unbiasedness, $90\%/95\%$ coverage, $(\Sigma(x_i),\Omega)$ separation, and full-covariance SVI vs.\ Gibbs.\\
+2.\ Information-Age Gate & Dev-window gate over $L \in \{1.6, 5, 10, 15\}\,\mathrm{s}$ (scaling budget/horizon with $L$): require an interior regime ($20\%$--$80\%$ verify rate, $\ge 1.5\,\mathrm{veh{\cdot}s}$ gain over constant rules) and $\ge 10\%$ decision divergence vs.\ \emph{tuned-scale Factorized VoC}. If the stopping gate fails, pivot Tier~3 cleanly to fixed-budget multi-fidelity allocation.\\
+3.\ 72-Date Closed Loop & Score $T \ge 60\,\mathrm{s}$ causal rollouts on the 72 test dates against \texttt{greedy5} (act-now $L$), \texttt{refresh-L}, precomputed \texttt{always-verify}, \emph{tuned-scale Factorized VoC}, and compute-rate-matched \emph{Action-Margin}, charging wall-clock runtime with paired day-level confidence intervals.\\
+\bottomrule
+\end{tabular}}
+\vspace{-2pt}
+\end{center}
+
+\section{Implementation Plan (Julia)}
+
+All modeling, inference, numerical verification, and benchmark orchestration are structured in a unified \texttt{Julia} package (\texttt{ComputationDelayedMDP.jl}): (1) run the pre-registered information-age gate and Tier~1 $\E[y_{irj}]=0$ audit; (2) implement masked heteroscedastic Gibbs and full-covariance SVI with held-out scoring and zero/legality PPCs; (3) complete proofs of the perturbation and queue-memory bounds; and (4) execute the locked 72-date SUMO evaluation, reporting both positive gains and any mechanistic null contrasts transparently.
+
+\begingroup
+\footnotesize
+\renewcommand{\section}[2]{\subsection*{References}}
+\setlength{\bibsep}{1.2pt plus 0.5pt}
+\begin{thebibliography}{20}
+
+\bibitem[Ault and Sharon(2021)]{ault2021reinforcement}
+J.~Ault and G.~Sharon (2021). \emph{Reinforcement Learning Benchmarks for Traffic Signal Control}. \emph{NeurIPS Datasets and Benchmarks}, vol.~1.
+
+\bibitem[Chick et~al.(2017)]{chick2017delayed}
+S.~E. Chick, M.~Forster, and P.~Pertile (2017). \emph{A Bayesian Decision Theoretic Model of Sequential Experimentation with Delayed Response}. \emph{J.\ R.\ Stat.\ Soc.\ B}, 79(5):1439--1462.
+
+\bibitem[Chick and Frazier(2012)]{chick2012sequential}
+S.~E. Chick and P.~Frazier (2012). \emph{Sequential Sampling with Economics of Selection Procedures}. \emph{Manag.\ Sci.}, 58(3):550--569.
+
+\bibitem[Derman et~al.(2021)]{derman2021delayed}
+E.~Derman, G.~Dalal, and S.~Mannor (2021). \emph{Acting in Delayed Environments with Non-Stationary Markov Policies}. In \emph{ICLR}.
+
+\bibitem[Findeisen and Allg\"ower(2004)]{findeisen2004delay}
+R.~Findeisen and F.~Allg\"ower (2004). \emph{Computational Delay in Nonlinear Model Predictive Control}. \emph{IFAC Proc.\ Vol.}, 37(1):427--432.
+
+\bibitem[Frazier et~al.(2009)]{frazier2009knowledge}
+P.~I. Frazier, W.~B. Powell, and S.~Dayanik (2009). \emph{The Knowledge-Gradient Policy for Correlated Normal Beliefs}. \emph{INFORMS J.\ Comput.}, 21(4):599--613.
+
+\bibitem[Goodall et~al.(2013)]{goodall2013traffic}
+N.~J. Goodall, B.~L. Smith, and B.~Park (2013). \emph{Traffic Signal Control with Connected Vehicles}. \emph{Transp.\ Res.\ Rec.}, 2381(1):65--72.
+
+\bibitem[Hansen and Zilberstein(2001)]{hansen2001monitoring}
+E.~A. Hansen and S.~Zilberstein (2001). \emph{Monitoring and Control of Anytime Algorithms: A Dynamic Programming Approach}. \emph{Artif.\ Intell.}, 126(1--2):139--157.
+
+\bibitem[Hay et~al.(2012)]{hay2012selecting}
+N.~Hay, S.~Russell, D.~Tolpin, and S.~E. Shimony (2012). \emph{Selecting Computations: Theory and Applications}. In \emph{UAI}, pages 346--355.
+
+\bibitem[Kennedy and O'Hagan(2000)]{kennedy2000predicting}
+M.~C. Kennedy and A.~O'Hagan (2000). \emph{Predicting the Output from a Complex Computer Code When Fast Approximations Are Available}. \emph{Biometrika}, 87(1):1--13.
+
+\bibitem[Kennedy and O'Hagan(2001)]{kennedy2001bayesian}
+M.~C. Kennedy and A.~O'Hagan (2001). \emph{Bayesian Calibration of Computer Models}. \emph{J.\ R.\ Stat.\ Soc.\ B}, 63(3):425--464.
+
+\bibitem[Lin et~al.(2015)]{lin2015metareasoning}
+C.~H. Lin, A.~Kolobov, E.~Kamar, and E.~Horvitz (2015). \emph{Metareasoning for Planning Under Uncertainty}. In \emph{IJCAI}, pages 1601--1608.
+
+\bibitem[Magnino et~al.(2026)]{magnino2026learning}
+L.~Magnino, A.~Marino, M.~Amir, D.~Shishika, and A.~Prorok (2026). \emph{Learning Robot Metareasoning: Adaptive Computation Budgets for Real-Time Control}. \texttt{arXiv:2610.23662}.
+
+\bibitem[Muppidi et~al.(2026)]{muppidi2026time}
+A.~Muppidi, O.~Darwish, D.~Cope, J.~Henriques, and J.~Foerster (2026). \emph{Finding the Time to Think in Real-Time Reinforcement Learning}. \texttt{arXiv:2606.26463}.
+
+\bibitem[Osorio and Bierlaire(2013)]{osorio2013simulation}
+C.~Osorio and M.~Bierlaire (2013). \emph{A Simulation-Based Optimization Framework for Urban Transportation Problems}. \emph{Oper.\ Res.}, 61(6):1333--1345.
+
+\bibitem[Pi-Star Lab(2025)]{resco2025v2}
+Pi-Star Lab (2025). \emph{RESCO v2.0} (commit \texttt{f1ed9a1}, scenario \texttt{saltlake2\_400sX200w}; Utah DOT ATSPM 5-min counts). \url{https://github.com/Pi-Star-Lab/RESCO}.
+
+\bibitem[Poloczek et~al.(2017)]{poloczek2017miso}
+M.~Poloczek, J.~Wang, and P.~I. Frazier (2017). \emph{Multi-Information Source Optimization}. In \emph{NeurIPS}, pages 4288--4298.
+
+\bibitem[Ramstedt and Pal(2019)]{ramstedt2019realtime}
+S.~Ramstedt and C.~Pal (2019). \emph{Real-Time Reinforcement Learning}. In \emph{NeurIPS}, vol.~32.
+
+\bibitem[Russell and Wefald(1991)]{russell1991principles}
+S.~Russell and E.~Wefald (1991). \emph{Principles of Metareasoning}. \emph{Artif.\ Intell.}, 49(1--3):361--395. \href{https://doi.org/10.1016/0004-3702(91)90015-C}{doi:10.1016/0004-3702(91)90015-C}.
+
+\bibitem[Wen et~al.(2021)]{wen2021predictions}
+Z.~Wen, I.~Osband, C.~Qin, X.~Lu, M.~Ibrahimi, V.~Dwaracherla, M.~Asghari, and B.~Van~Roy (2021). \emph{From Predictions to Decisions: The Importance of Joint Predictive Distributions}. \texttt{arXiv:2107.09224}.
+
+\bibitem[Xie et~al.(2016)]{xie2016pairwise}
+J.~Xie, P.~I. Frazier, and S.~E. Chick (2016). \emph{Bayesian Optimization via Simulation with Pairwise Sampling and Correlated Prior Beliefs}. \emph{Oper.\ Res.}, 64(2):542--559.
+
+\end{thebibliography}
+\endgroup

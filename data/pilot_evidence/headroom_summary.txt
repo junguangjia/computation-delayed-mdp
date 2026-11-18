@@ -1,0 +1,112 @@
+files=4 activations=472 analysed_states=435 forced=37
+plant summary 2023-10-04 300 ep 590 cost 25361.4 {'collision_events': 0, 'teleport_start_events': 0, 'emergency_stop_events': 2}
+plant summary 2023-10-04 900 ep 590 cost 18764.2 {'collision_events': 0, 'teleport_start_events': 0, 'emergency_stop_events': 6}
+plant summary 2023-10-05 300 ep 590 cost 27486.5 {'collision_events': 0, 'teleport_start_events': 0, 'emergency_stop_events': 3}
+plant summary 2023-10-05 900 ep 590 cost 26569.3 {'collision_events': 0, 'teleport_start_events': 0, 'emergency_stop_events': 11}
+CHECK plant(obs->t0+30) == truth_fork a1@0 @30: n=415 max_abs_err=3.64e-12
+CHECK plant cost start->start+90 2023-10-04 300 3709.5
+CHECK plant cost start->start+90 2023-10-04 900 2991.5
+CHECK plant cost start->start+90 2023-10-05 300 4330.1
+CHECK plant cost start->start+90 2023-10-05 900 4316.3
+predictive rollout errors: 0
+collision+teleport events: truth_fork 21 predictive 96
+
+STRUCTURE: a1==MP 0.366; a2==MP 0.143; both tau_b candidates forced to MP target (MP switched at t0) 0.575
+  L score gap a1-a2: share exactly 0 = 0.308; p50=0.25 p90=2.00
+
+NOISE (a1@0 - pi0, states with a1!=MP, n=276): truth-xi single-seed sd @60 median 11.2, @30 median 0.16; H single-scenario sd @60 median 22.2
+  corr(truth_fork diff, truth-xi mean diff) @60 = 0.923
+
+(A) ONE-STEP ADVANTAGE vs act-now L (a1@0); positive = better than greedy5; truth = actual demand, 8 indep. native seeds, 60s
+  pi0 (MP) instead of a1                                     mean   -10.06  95%CI [ -14.45,  -5.76]  veh-s/decision
+  a2 instead of a1                                           mean   -11.02  95%CI [ -14.48,  -7.88]  veh-s/decision
+  zero-delay ORACLE (split-sample: pick seeds0-3, score 4-7) mean     8.39  95%CI [   5.86,  11.23]  veh-s/decision
+  zero-delay ORACLE in-sample (upward-biased bound)          mean     8.82  95%CI [   6.32,  11.58]  veh-s/decision
+  oracle flip rate (split-sample) = 0.343
+
+(B) H-VERIFIED CHOICE among {a1,a2,pi0}, realised on truth-xi (choice uses H only)
+      flip targets {'a2@0': 61, 'pi0': 118}
+  verify@tau=0 (H horizon 30s, B=4); flip rate 0.411         mean    -1.66  95%CI [  -5.22,   1.77]  veh-s/decision
+      gain when flipped: n=179 mean -4.03 median 0.31 share>0 0.51
+      flip targets {'a2@0': 66, 'pi0': 120}
+  verify@tau=0 (H horizon 30s, B=8); flip rate 0.428         mean    -1.83  95%CI [  -5.51,   1.74]  veh-s/decision
+      gain when flipped: n=186 mean -4.27 median 0.18 share>0 0.51
+      flip targets {'a2@0': 97, 'pi0': 54}
+  verify@tau=0 (H horizon 60s, B=4); flip rate 0.347         mean     5.98  95%CI [   3.57,   8.67]  veh-s/decision
+      gain when flipped: n=151 mean 17.22 median 11.12 share>0 0.75
+      flip targets {'a2@0': 90, 'pi0': 60}
+  verify@tau=0 (H horizon 60s, B=8); flip rate 0.345         mean     6.51  95%CI [   4.04,   9.39]  veh-s/decision
+      gain when flipped: n=150 mean 18.86 median 13.14 share>0 0.78
+
+(B2) P1 PRECOMPUTE (batch on state tau_b+0.2s old; executes at t0), realised on truth-xi
+  P1 verify (H 30s, B=4) vs fresh greedy a1; flip 0.409; n_P1=431 mean    -2.07  95%CI [  -5.84,   1.47]  veh-s/decision
+  P1 verify (H 60s, B=4) vs fresh greedy a1; flip 0.331; n_P1=431 mean     5.19  95%CI [   2.85,   7.70]  veh-s/decision
+  old-state L top-1 == fresh L top-1: 0.913
+
+(C) LITERAL PROPOSAL TIMING: MP acts at t0, candidate at t0+tau_b (0.6s) off-grid
+  staleness a1: T(a1@0) - T(a1@tb)  (negative = delay hurts) mean   -11.99  95%CI [ -15.96,  -8.33]  veh-s/decision
+  always-verify at tau_b (B=4, H 30s) vs act-now L           mean   -10.34  95%CI [ -14.80,  -5.70]  veh-s/decision
+  always-verify at tau_b (B=8, H 30s) vs act-now L           mean   -10.34  95%CI [ -14.92,  -5.82]  veh-s/decision
+  refresh-L at tau_b (greedy on fresh state at t0+0.6s, MP at t0) mean   -11.41  95%CI [ -15.36,  -7.69]  veh-s/decision
+  legality gate: verify iff a candidate survives at tau_b (H 30s, B=4); verify-rate 0.577 mean    -1.93  95%CI [  -3.69,  -0.15]  veh-s/decision
+  legality gate: verify iff a candidate survives at tau_b (H 60s, B=4); verify-rate 0.577 mean    -0.24  95%CI [  -2.20,   1.88]  veh-s/decision
+  perfect-info verify at tau_b (in-sample oracle over tau_b set) mean    -7.65  95%CI [ -12.47,  -2.61]  veh-s/decision
+
+(F) DISCREPANCY delta = gH - gL (relative to pi0); H and L horizon 30s
+  share exactly-zero delta coords {'a1@0': 0.368, 'a2@0': 0.168, 'a1@tb': 0.89, 'a2@tb': 0.607}
+  Sigma sd (noise-corrected) {'a1@0': 58.54, 'a2@0': 60.68, 'a1@tb': 18.0, 'a2@tb': 33.43} | mean Omega sd {'a1@0': 0.8, 'a2@0': 0.94, 'a1@tb': 0.45, 'a2@tb': 0.61}
+  corr cross-action (a1@0,a2@0)=0.657 (a1@tb,a2@tb)=0.381 | cross-delay (a1@0,a1@tb)=0.273 (a2@0,a2@tb)=0.614
+  no-structural-zero states n=44: cross-action@0 0.800, @tb 0.656, cross-delay a1 0.703, a2 0.904
+  mean delta {'a1@0': 34.2, 'a2@0': 8.57, 'a1@tb': 1.48, 'a2@tb': -8.41} | mean gL {'a1@0': -32.73, 'a2@0': -2.01, 'a1@tb': -1.07, 'a2@tb': 11.13}
+  corr(gL,gH) {'a1@0': 0.086, 'a2@0': 0.054, 'a1@tb': 0.089, 'a2@tb': 0.217}
+  corr(gH_30, truth60) {'a1@0': 0.327, 'a2@0': 0.38, 'a1@tb': 0.598, 'a2@tb': 0.622} | corr(gL, truth60) {'a1@0': 0.29, 'a2@0': 0.2, 'a1@tb': 0.015, 'a2@tb': 0.213}
+(G) POLICIES with H horizon 30s (B=4), literal timing, LOCO fit; advantage vs act-now L, truth 60s
+  always-verify                    verify 1.000              mean   -10.34  95%CI [ -14.94,  -5.99]  veh-s/decision
+  joint VoC Qtau |L-fallback       verify 0.692              mean    -3.57  95%CI [  -5.83,  -1.17]  veh-s/decision
+  fact VoC Qtau |L-fallback        verify 0.703              mean    -3.51  95%CI [  -5.84,  -1.13]  veh-s/decision
+  joint VoC Qtau |prior-fallback   verify 0.692              mean    -4.44  95%CI [  -6.75,  -2.07]  veh-s/decision
+  fact VoC Qtau |prior-fallback    verify 0.703              mean    -4.49  95%CI [  -6.83,  -2.08]  veh-s/decision
+  joint VoC Q0 |L-fallback         verify 0.660              mean    -5.49  95%CI [  -7.68,  -3.38]  veh-s/decision
+  fact VoC Q0 |L-fallback          verify 0.457              mean    -6.02  95%CI [  -8.50,  -3.45]  veh-s/decision
+  action-margin                    verify 0.508              mean    -6.30  95%CI [  -9.36,  -3.30]  veh-s/decision
+  ex-post oracle gate              verify 0.211              mean     5.70  95%CI [   3.66,   8.06]  veh-s/decision
+  joint vs fact Qtau: decisions differ in 0.011 of states
+  joint minus fact (Qtau, L-fallback)                        mean    -0.06  95%CI [  -0.38,   0.14]  veh-s/decision
+  joint vs fact Q0: decisions differ in 0.202 of states
+  joint minus fact (Q0, L-fallback)                          mean     0.53  95%CI [  -0.74,   2.06]  veh-s/decision
+
+(F) DISCREPANCY delta = gH - gL (relative to pi0); H and L horizon 60s
+  share exactly-zero delta coords {'a1@0': 0.368, 'a2@0': 0.159, 'a1@tb': 0.89, 'a2@tb': 0.589}
+  Sigma sd (noise-corrected) {'a1@0': 104.88, 'a2@0': 117.58, 'a1@tb': 49.14, 'a2@tb': 73.66} | mean Omega sd {'a1@0': 20.03, 'a2@0': 22.73, 'a1@tb': 7.48, 'a2@tb': 16.0}
+  corr cross-action (a1@0,a2@0)=0.633 (a1@tb,a2@tb)=0.547 | cross-delay (a1@0,a1@tb)=0.396 (a2@0,a2@tb)=0.602
+  no-structural-zero states n=44: cross-action@0 0.892, @tb 0.752, cross-delay a1 0.797, a2 0.938
+  mean delta {'a1@0': 41.18, 'a2@0': 3.13, 'a1@tb': 3.93, 'a2@tb': -6.5} | mean gL {'a1@0': -49.96, 'a2@0': -2.6, 'a1@tb': -2.08, 'a2@tb': 17.32}
+  corr(gL,gH) {'a1@0': 0.274, 'a2@0': 0.162, 'a1@tb': -0.065, 'a2@tb': 0.083}
+  corr(gH_60, truth60) {'a1@0': 0.87, 'a2@0': 0.857, 'a1@tb': 0.955, 'a2@tb': 0.943} | corr(gL, truth60) {'a1@0': 0.243, 'a2@0': 0.151, 'a1@tb': -0.063, 'a2@tb': 0.103}
+(G) POLICIES with H horizon 60s (B=4), literal timing, LOCO fit; advantage vs act-now L, truth 60s
+  always-verify                    verify 1.000              mean    -8.16  95%CI [ -13.25,  -3.32]  veh-s/decision
+  joint VoC Qtau |L-fallback       verify 0.692              mean    -1.68  95%CI [  -4.33,   1.03]  veh-s/decision
+  fact VoC Qtau |L-fallback        verify 0.703              mean    -1.32  95%CI [  -4.12,   1.95]  veh-s/decision
+  joint VoC Qtau |prior-fallback   verify 0.692              mean    -2.84  95%CI [  -5.51,   0.17]  veh-s/decision
+  fact VoC Qtau |prior-fallback    verify 0.703              mean    -2.51  95%CI [  -5.41,   0.69]  veh-s/decision
+  joint VoC Q0 |L-fallback         verify 0.644              mean    -4.65  95%CI [  -7.11,  -2.26]  veh-s/decision
+  fact VoC Q0 |L-fallback          verify 0.407              mean    -4.87  95%CI [  -6.87,  -2.76]  veh-s/decision
+  action-margin                    verify 0.508              mean    -5.04  95%CI [  -8.28,  -1.86]  veh-s/decision
+  ex-post oracle gate              verify 0.234              mean     6.64  95%CI [   4.06,   9.70]  veh-s/decision
+  joint vs fact Qtau: decisions differ in 0.011 of states
+  joint minus fact (Qtau, L-fallback)                        mean    -0.36  95%CI [  -0.96,   0.08]  veh-s/decision
+  joint vs fact Q0: decisions differ in 0.237 of states
+  joint minus fact (Q0, L-fallback)                          mean     0.22  95%CI [  -1.24,   1.84]  veh-s/decision
+
+STALENESS by MP behaviour at t0: a1 still legal & applied at tau_b in 0.430 of states
+  a1 applied at tau_b                n= 187 mean staleness   -4.26 (sd  17.43)
+  a1 forfeited (MP target kept)      n= 248 mean staleness  -17.82 (sd  42.03)
+
+SCALE: greedy5 plant cost over all episodes 98181 veh-s across 472 activations (208.0 veh-s per 5s decision interval)
+RUNTIME batch B=4 x 3 candidates, 30s horizon (incl. snapshot+forecast+resets), measured under 4-way parallel load: p10/p50/p90 = [0.534, 0.596, 0.665] s
+
+SCALE: mean greedy5 plant cost per 5s interval = 208.0 veh-s (n=468)
+  one-step advantage of greedy5 over MP = 10.06 veh-s/decision -> naive additive prediction 4.46% vs measured closed-loop greedy5-over-MP 3.03% (student, 4x90s) => one-step-to-closed-loop factor ~0.68
+  zero-delay split-sample oracle       8.39 veh-s/decision -> naive additive  3.72% ; calibrated ~ 2.53% of TTS
+  H60 B=4 verify @tau0                 5.98 veh-s/decision -> naive additive  2.65% ; calibrated ~ 1.80% of TTS
+  H30 B=4 verify @tau0                -1.66 veh-s/decision -> naive additive -0.73% ; calibrated ~-0.50% of TTS

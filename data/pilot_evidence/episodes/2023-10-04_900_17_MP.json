@@ -1,0 +1,1 @@
+{"date": "2023-10-04", "offset": 900, "seed": 17, "policy": "MP", "ep": 590, "cost": 19722.499999997977, "events": {"collision_events": 0, "teleport_start_events": 0, "emergency_stop_events": 8}, "missed": 0, "elapsed_p50": 0.0, "elapsed_max": 0.0, "choices": {}, "log": []}
